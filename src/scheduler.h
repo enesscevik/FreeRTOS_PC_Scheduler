@@ -17,6 +17,8 @@ typedef struct {
     //    TaskHandle_t handle; // FreeRTOS handler
 } TaskParams;
 
+TaskParams* parse_tasks_from_file(const char*, int*);
+
 /**
  * @brief scheduler baslaticisi
  *

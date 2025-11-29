@@ -71,4 +71,4 @@ to exclude the API function. */
 /* Assert call. */
 #define configASSERT(x) assert(x)
 
-#endif /* FREERTOS_CONFIG_H */
+#endif /* FREERTOS_CONFIG_H */ //
