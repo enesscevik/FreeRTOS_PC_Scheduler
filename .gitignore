@@ -1,4 +1,7 @@
+.cache
+.clang*
 .devd
+compile_commands.json
 bin
 lib
 log
