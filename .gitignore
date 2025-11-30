@@ -1,4 +1,7 @@
+.cache
+.clang*
 .devd
-bin
+compile_commands.json
 lib
 log
+freertos_sim
