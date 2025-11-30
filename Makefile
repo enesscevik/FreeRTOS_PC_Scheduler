@@ -1,4 +1,4 @@
-TARGET = bin/freertos_sim
+TARGET = freertos_sim
 OBJ_DIR = lib
 
 CC = gcc
@@ -25,7 +25,6 @@ OBJS = $(addprefix $(OBJ_DIR)/, $(C_SOURCES:.c=.o))
 all: $(TARGET)
 
 $(TARGET): $(OBJS)
-	@mkdir -p $(@D)
 	$(CC) $(OBJS) -o $(TARGET) -lpthread
 
 $(OBJ_DIR)/%.o: %.c

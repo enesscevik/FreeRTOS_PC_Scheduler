@@ -1,11 +1,58 @@
 #include "scheduler.h"
 #include <stdio.h>
 #include <stdlib.h>
-#include <string.h>
+#include <time.h>
 
 #define MAX_LINE_LENGTH 256
 #define INITIAL_CAPACITY 26
+#define ANSI_COLOR_RESET "\033[0m │\n"
+#define ANSI_COLOR_SET_24BIT_FG "│ \033[38;2;%d;%d;%dm"
 
+static TaskParams* TASK_LIST = NULL;
+static int TASK_COUNT = 0;
+static int CURR_TIME = 0;
+static int INDEX = 0;
+
+TaskQueue queue_u0 = {NULL, NULL, 0};     // 0 / fcfs
+TaskQueue queue_u1 = {NULL, NULL, 0};     // 1 / user high
+TaskQueue queue_u2 = {NULL, NULL, 0};     // 2 / user medium
+TaskQueue queue_u3 = {NULL, NULL, 0};     // 3 / user low - round robin
+TaskQueue killed_tasks = {NULL, NULL, 0}; // killed tasks
+
+TaskParams* current_task = NULL;
+
+// terminal ciktisi icin rastgele renk uretir
+void random_color(Color* color) {
+    color->red = 56 + (rand() % 200);
+    color->green = 56 + (rand() % 200);
+    color->blue = 56 + (rand() % 200);
+}
+
+// timeout dolasiyla oldurulen gorevleri loglar
+void log_timeouts() {
+    TaskParams* iter = killed_tasks.head;
+    while (iter) {
+        printf(ANSI_COLOR_SET_24BIT_FG, iter->color.red, iter->color.green, iter->color.blue);
+        printf("%07.4f sn   task%-2d   %-12s   │id:%-2d   oncelik:%-1d   kalan sure:%-2d sn", (float)CURR_TIME,
+               iter->id + 1, "zamanasimi", iter->id, iter->priority, iter->remaining_time);
+        printf(ANSI_COLOR_RESET);
+        iter = iter->next;
+    }
+    killed_tasks.head = NULL;
+    killed_tasks.tail = NULL;
+    killed_tasks.count = 0;
+}
+
+// log mesajlarini ozellestirmek icin
+void logger_w_chars(const char* chars) {
+    if (current_task == NULL) return;
+    printf(ANSI_COLOR_SET_24BIT_FG, current_task->color.red, current_task->color.green, current_task->color.blue);
+    printf("%07.4f sn   task%-2d   %-12s   │id:%-2d   oncelik:%-1d   kalan sure:%-2d sn", (float)CURR_TIME,
+           current_task->id + 1, chars, current_task->id, current_task->priority, current_task->remaining_time);
+    printf(ANSI_COLOR_RESET);
+}
+
+// giris.txt dosyasindan gorevleri ice aktariyor
 TaskParams* parse_tasks_from_file(const char* f_name, int* task_count) {
     FILE* file = fopen(f_name, "r");
     if (file == NULL) {
@@ -50,6 +97,11 @@ TaskParams* parse_tasks_from_file(const char* f_name, int* task_count) {
             tasks[count].remaining_time = cpu_time;
             tasks[count].status = TASK_READY;
 
+            tasks[count].next = NULL;
+            tasks[count].prev = NULL;
+
+            random_color(&tasks[count].color);
+
             count++;
         } else {
             fprintf(stderr, "warn could not parse line: %d. %s", count, line);
@@ -73,8 +125,189 @@ TaskParams* parse_tasks_from_file(const char* f_name, int* task_count) {
     return tasks;
 }
 
-void start_scheduler(TaskParams tasks[], int task_count) {
-    (void)tasks;      // for suppress
-    (void)task_count; // for suppress
-    printf("Scheduler started (placeholder).\n");
+// bir gorevi oldurmek icin. timeout icin kullaniliyor
+void kill_task(TaskQueue* queue, TaskParams* target) {
+    if (target->next)
+        target->next->prev = target->prev;
+    else
+        queue->tail = target->prev;
+    if (target->prev)
+        target->prev->next = target->next;
+    else
+        queue->head = target->next;
+    queue->count--;
+    enqueue(&killed_tasks, target);
+}
+
+// timeout olan gorevleri yakalar
+void check_timeouts() {
+    TaskQueue* queues[] = {&queue_u0, &queue_u1, &queue_u2, &queue_u3};
+
+    for (int i = 0; i < 4; i++) {
+        TaskQueue* curr_q = queues[i];
+        TaskParams* iter = curr_q->head;
+        TaskParams* next_task = NULL;
+        while (iter) {
+            next_task = iter->next;
+            int alive_time = CURR_TIME - iter->arrival_time;
+            if (alive_time >= 20) {
+                kill_task(curr_q, iter);
+            }
+            iter = next_task;
+        }
+    }
+}
+
+// hedef kuyruga eleman ekler
+void enqueue(TaskQueue* queue, TaskParams* task) {
+    if (task == NULL) return;
+    task->next = NULL;
+    task->prev = NULL;
+    if (queue->count == 0) {
+        queue->head = task;
+        queue->tail = task;
+    } else {
+        queue->tail->next = task;
+        task->prev = queue->tail;
+        queue->tail = task;
+    }
+    queue->count++;
+}
+
+// hedef kuyruktan siradaki elemani ceker
+TaskParams* dequeue(TaskQueue* queue) {
+    if (queue->count == 0 || queue->head == NULL) {
+        return NULL;
+    }
+    TaskParams* task = queue->head;
+
+    if (queue->count == 1) {
+        queue->head = NULL;
+        queue->tail = NULL;
+    } else {
+        queue->head = task->next;
+        if (queue->head != NULL) {
+            queue->head->prev = NULL;
+        }
+    }
+    task->next = NULL;
+    task->prev = NULL;
+
+    queue->count--;
+    return task;
+}
+
+// kuyruk secimi. bu bir gorevi oncelik dusurdukten sonra dogru kuyruga yonlendirir
+void choose_enqueue(TaskParams* curr) {
+    switch (curr->priority) {
+    case 0:
+        enqueue(&queue_u0, curr);
+        break;
+    case 1:
+        enqueue(&queue_u1, curr);
+        break;
+    case 2:
+        enqueue(&queue_u2, curr);
+        break;
+    case 3:
+        enqueue(&queue_u3, curr);
+        break;
+    }
+}
+
+// her quantum zamanda bu metod cagriliyor
+void schedule_tick(void) {
+    // yeni gelen gorev varsa uygun kuyruga ekle.
+    for (int i = INDEX; i < TASK_COUNT; i++) {
+        TaskParams* curr = &TASK_LIST[i];
+        if (CURR_TIME == curr->arrival_time) {
+            INDEX++;
+            choose_enqueue(curr);
+        } else {
+            // daha varmamis olan ama varmasi en yakin olan gorev buna yakalanir. cunku index takibi ile
+            // gecmiste varan gorevler tekrar kontrol edilmez
+            break;
+        }
+    }
+
+    // calisan gorev bittiyse sonlandir.
+    if (current_task != NULL) {
+        // kalan zamani bir azalt
+        // eger gorev bittiysse siradakine gec
+        if (--(current_task->remaining_time) == 0) {
+            current_task->status = TASK_FINISHED;
+            logger_w_chars("sonlandi");
+            current_task = NULL;
+        }
+        // eger bitmediyse kontrol et
+        else {
+            // oncelik 0sa devam etsin.// alttaki gorev degistiriciye girmeyecek cunku null yapmadik.
+            // oncelik 0 degilse oncelik azalt ve kuyrugunu degistir.
+            if (current_task->priority != 0) {
+                if (current_task->priority < 3) {
+                    current_task->priority++;
+                }
+                choose_enqueue(current_task);
+                current_task->status = TASK_READY;
+                logger_w_chars("askida");
+                current_task = NULL;
+            } else {
+                logger_w_chars("yurutuluyor");
+            }
+        }
+    }
+
+    check_timeouts();
+
+    // calisan gorev suresi doldu mu (user task ise 1 sn calisir, sonra oncelik duser).
+    if (current_task == NULL) {
+        // eger buraya girildiyse demekki onceki gorev serbest birakilmis
+        // queue_u0dan baslamak uzere en yakin gorevi aktif et
+        if (queue_u0.count > 0) {
+            current_task = dequeue(&queue_u0);
+        } else if (queue_u1.count > 0) {
+            current_task = dequeue(&queue_u1);
+        } else if (queue_u2.count > 0) {
+            current_task = dequeue(&queue_u2);
+        } else if (queue_u3.count > 0) {
+            current_task = dequeue(&queue_u3);
+        }
+        if (current_task) {
+            current_task->status = TASK_RUNNING;
+            if (current_task->cpu_time == current_task->remaining_time) {
+                logger_w_chars("basladi");
+            } else {
+                logger_w_chars("yurutuluyor");
+            }
+        }
+    }
+    // logging
+    log_timeouts();
+    // printf("Tick...\n");
+}
+
+// schedulerin kendisi
+void scheduler(TaskParams tasks[], int task_count) {
+    TASK_LIST = tasks;
+    TASK_COUNT = task_count;
+    CURR_TIME = 0;
+    INDEX = 0;
+
+    int timeout = 0;
+    srand(time(NULL));
+    printf("Scheduler started..\n");
+    printf("┌────────────────────────────────────────────────────────────────────────────┐\n");
+    while (TASK_COUNT > 0 && !(TASK_COUNT == INDEX && queue_u0.count == 0 && queue_u1.count == 0 &&
+                               queue_u2.count == 0 && queue_u3.count == 0 && current_task == NULL)) {
+        schedule_tick();
+        CURR_TIME++;
+        if (CURR_TIME > 500) {
+            timeout = 1;
+            break;
+        }
+    }
+    printf("└────────────────────────────────────────────────────────────────────────────┘\n");
+    if (timeout) printf("simulation timeout %d\n", CURR_TIME);
+
+    printf("Scheduler stoped..\n");
 }
