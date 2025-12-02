@@ -12,7 +12,7 @@ CFLAGS = -g -Wall \
 
 APP_SOURCES = main.c \
               scheduler.c \
-              tasks.c \
+              tasks1.c \
 
 #RTOS_SOURCES = $(notdir $(wildcard FreeRTOS/source/*.c)) \
 #               $(notdir $(wildcard FreeRTOS/portable/ThirdParty/GCC/Posix/*.c))
