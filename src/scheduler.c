@@ -3,15 +3,15 @@
 #include <stdlib.h>
 #include <time.h>
 
-#define MAX_LINE_LENGTH 256
-#define INITIAL_CAPACITY 26
-#define ANSI_COLOR_RESET "\033[0m │\n"
-#define ANSI_COLOR_SET_24BIT_FG "│ \033[38;2;%d;%d;%dm"
+#define MAX_LINE_LENGTH 256            // giris dosyasi icin bir satirdaki karakter siniri
+#define INITIAL_CAPACITY 26            // giris dosyasi icin sinir (gerekirse kendi kendini genisletiyor)
+#define ANSI_COLOR_RESET "\033[0m  \n" // renkli loglar icin resetleyici
+#define ANSI_COLOR_SET_24BIT_FG "  \033[38;2;%d;%d;%dm" // renkli loglar icin renk girdisi
 
-static TaskParams* TASK_LIST = NULL;
-static int TASK_COUNT = 0;
-static int CURR_TIME = 0;
-static int INDEX = 0;
+static TaskParams* TASK_LIST = NULL; // gorevlerin tutuldugu liste
+static int TASK_COUNT = 0;           // gorev listesinin eleman sayisi
+static int CURR_TIME = 0;            // loglar icin zaman tutucu
+static int INDEX = 0;                // okunan gorevlerin indeksini tutar
 
 TaskQueue queue_u0 = {NULL, NULL, 0};     // 0 / fcfs
 TaskQueue queue_u1 = {NULL, NULL, 0};     // 1 / user high
@@ -19,7 +19,7 @@ TaskQueue queue_u2 = {NULL, NULL, 0};     // 2 / user medium
 TaskQueue queue_u3 = {NULL, NULL, 0};     // 3 / user low - round robin
 TaskQueue killed_tasks = {NULL, NULL, 0}; // killed tasks
 
-TaskParams* current_task = NULL;
+TaskParams* current_task = NULL; // mevcut yurutulmekte olan gorev
 
 // terminal ciktisi icin rastgele renk uretir
 void random_color(Color* color) {
@@ -43,7 +43,7 @@ void log_timeouts() {
     killed_tasks.count = 0;
 }
 
-// log mesajlarini ozellestirmek icin
+// log mesajlarini ozellestirir
 void logger_w_chars(const char* chars) {
     if (current_task == NULL) return;
     printf(ANSI_COLOR_SET_24BIT_FG, current_task->color.red, current_task->color.green, current_task->color.blue);
@@ -52,7 +52,7 @@ void logger_w_chars(const char* chars) {
     printf(ANSI_COLOR_RESET);
 }
 
-// giris.txt dosyasindan gorevleri ice aktariyor
+// arguman olarak gelen dosyadan gorevleri ice aktarir
 TaskParams* parse_tasks_from_file(const char* f_name, int* task_count) {
     FILE* file = fopen(f_name, "r");
     if (file == NULL) {
@@ -118,6 +118,25 @@ TaskParams* parse_tasks_from_file(const char* f_name, int* task_count) {
             return tasks;
         }
         tasks = temp;
+
+        // FreeRTOS gorevi olustur
+        for (int i = 0; i < count; i++) {
+            // create the task
+            BaseType_t result = xTaskCreate(generic_task,             // gorev fonksiyonu
+                                            "WorkerTask",             // gorev ismi
+                                            configMINIMAL_STACK_SIZE, // stack boyutu
+                                            (void*)&tasks[i],         // gprev parametreleri (TaksParams)
+                                            tskIDLE_PRIORITY + 1,     // oncelik
+                                            &tasks[i].handle          // handler
+            );
+
+            if (result != pdPASS) {
+                fprintf(stderr, "failed to create task %d\n", i);
+            } else {
+                vTaskSuspend(tasks[i].handle);
+            }
+        }
+
     } else {
         free(tasks);
         return NULL;
@@ -125,7 +144,7 @@ TaskParams* parse_tasks_from_file(const char* f_name, int* task_count) {
     return tasks;
 }
 
-// bir gorevi oldurmek icin. timeout icin kullaniliyor
+// timeout dolasiyla oldurulecek gorevleri temizler(kuyrugundan cikarir ve vTaskDelete() ile oldurur)
 void kill_task(TaskQueue* queue, TaskParams* target) {
     if (target->next)
         target->next->prev = target->prev;
@@ -136,6 +155,12 @@ void kill_task(TaskQueue* queue, TaskParams* target) {
     else
         queue->head = target->next;
     queue->count--;
+
+    // FreeRTOS icin de artik bu gorev yok
+    vTaskDelete(target->handle);
+    target->handle = NULL;
+    target->status = TASK_FINISHED;
+
     enqueue(&killed_tasks, target);
 }
 
@@ -215,7 +240,7 @@ void choose_enqueue(TaskParams* curr) {
     }
 }
 
-// her quantum zamanda bu metod cagriliyor
+// her tick icin cagrilir ve gorevleri yonetir
 void schedule_tick(void) {
     // yeni gelen gorev varsa uygun kuyruga ekle.
     for (int i = INDEX; i < TASK_COUNT; i++) {
@@ -252,7 +277,13 @@ void schedule_tick(void) {
                 logger_w_chars("askida");
                 current_task = NULL;
             } else {
-                logger_w_chars("yurutuluyor");
+                int alive_time = CURR_TIME - current_task->arrival_time;
+                if (alive_time >= 20) {
+                    enqueue(&queue_u0, current_task);
+                    // current_task->status = TASK_READY; // birazdan direkt oldurulecek
+                    current_task = NULL;
+                } else
+                    logger_w_chars("yurutuluyor");
             }
         }
     }
@@ -287,27 +318,48 @@ void schedule_tick(void) {
 }
 
 // schedulerin kendisi
-void scheduler(TaskParams tasks[], int task_count) {
+void init_scheduler(TaskParams tasks[], int task_count) {
     TASK_LIST = tasks;
     TASK_COUNT = task_count;
     CURR_TIME = 0;
     INDEX = 0;
-
-    int timeout = 0;
     srand(time(NULL));
-    printf("Scheduler started..\n");
-    printf("┌────────────────────────────────────────────────────────────────────────────┐\n");
+}
+
+void simulation_task(void* pvParameters) {
+    printf("──────────────────────────────────────────────────────────────────────────────\n");
+
+    TaskParams* prev_t = NULL;
+
     while (TASK_COUNT > 0 && !(TASK_COUNT == INDEX && queue_u0.count == 0 && queue_u1.count == 0 &&
                                queue_u2.count == 0 && queue_u3.count == 0 && current_task == NULL)) {
-        schedule_tick();
-        CURR_TIME++;
-        if (CURR_TIME > 500) {
-            timeout = 1;
-            break;
-        }
-    }
-    printf("└────────────────────────────────────────────────────────────────────────────┘\n");
-    if (timeout) printf("simulation timeout %d\n", CURR_TIME);
 
-    printf("Scheduler stoped..\n");
+        prev_t = current_task;
+
+        schedule_tick();
+
+        if (prev_t != current_task) {
+            if (prev_t != NULL) {
+                if (prev_t->status == TASK_FINISHED) {
+                    if (prev_t->handle != NULL) {
+                        vTaskDelete(prev_t->handle);
+                        prev_t->handle = NULL;
+                    }
+                } else {
+                    if (prev_t->handle != NULL) {
+                        vTaskSuspend(prev_t->handle);
+                    }
+                }
+            }
+
+            if (current_task != NULL && current_task->handle != NULL) {
+                vTaskResume(current_task->handle);
+            }
+        }
+
+        vTaskDelay(pdMS_TO_TICKS(1000));
+        CURR_TIME++;
+    }
+    printf("──────────────────────────────────────────────────────────────────────────────\n");
+    vTaskEndScheduler();
 }
