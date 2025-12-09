@@ -31,6 +31,7 @@ typedef struct TaskParams {
     int priority;       // Öncelik (0: Real-Time, 1-2-3: User Tasks)
     int cpu_time;       // Toplam Gereken CPU Suresi
     int remaining_time; // Kalan CPU Suresi
+    int last_status_change; // Durum degisikligi zamani
 
     TaskStatus status; // Gorevin Simülasyon Durumu
     Color color;       // Log ciktisi icin atanan rastgele renk

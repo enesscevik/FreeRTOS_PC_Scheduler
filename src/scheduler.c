@@ -174,8 +174,8 @@ void check_timeouts() {
         TaskParams* next_task = NULL;
         while (iter) {
             next_task = iter->next;
-            int alive_time = CURR_TIME - iter->arrival_time;
-            if (alive_time >= 20) {
+            int pending_time = CURR_TIME - iter->last_status_change;
+            if (pending_time >= 20) {
                 kill_task(curr_q, iter);
             }
             iter = next_task;
@@ -246,6 +246,7 @@ void schedule_tick(void) {
     for (int i = INDEX; i < TASK_COUNT; i++) {
         TaskParams* curr = &TASK_LIST[i];
         if (CURR_TIME == curr->arrival_time) {
+            curr->last_status_change = CURR_TIME; // varis zamanini ilk durum degisikligi olarak ayarla
             INDEX++;
             choose_enqueue(curr);
         } else {
@@ -274,11 +275,12 @@ void schedule_tick(void) {
                 }
                 choose_enqueue(current_task);
                 current_task->status = TASK_READY;
+                current_task->last_status_change = CURR_TIME; // durum degisikligi zamani guncelle
                 logger_w_chars("askida");
                 current_task = NULL;
             } else {
-                int alive_time = CURR_TIME - current_task->arrival_time;
-                if (alive_time >= 20) {
+                int running_time = CURR_TIME - current_task->last_status_change; 
+                if (running_time >= 20) {
                     enqueue(&queue_u0, current_task);
                     // current_task->status = TASK_READY; // birazdan direkt oldurulecek
                     current_task = NULL;
@@ -305,6 +307,7 @@ void schedule_tick(void) {
         }
         if (current_task) {
             current_task->status = TASK_RUNNING;
+            current_task->last_status_change = CURR_TIME; // durum degisikligi zamani guncelle
             if (current_task->cpu_time == current_task->remaining_time) {
                 logger_w_chars("basladi");
             } else {
