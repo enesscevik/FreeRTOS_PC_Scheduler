@@ -308,11 +308,8 @@ void schedule_tick(void) {
         if (current_task) {
             current_task->status = TASK_RUNNING;
             current_task->last_status_change = CURR_TIME; // durum degisikligi zamani guncelle
-            if (current_task->cpu_time == current_task->remaining_time) {
-                logger_w_chars("basladi");
-            } else {
-                logger_w_chars("yurutuluyor");
-            }
+
+            logger_w_chars("basladi");
         }
     }
     // logging
