@@ -9,6 +9,53 @@ Proje, temel FreeRTOS kaynak dosyalarını ve PC üzerinde çalışabilmesi içi
 - `FreeRTOS/`: FreeRTOS kaynak kodları ve başlık dosyaları.
 - `FreeRTOS/portable/ThirdParty/GCC/Posix/`: FreeRTOS'un Linux (POSIX) ortamında çalışmasını sağlayan taşınabilir katman.
 - `src/`: Uygulama özelindeki kaynak kodları (`main.c`, `scheduler.c`, `tasks1.c`, `FreeRTOSConfig.h`, `heap_3.c`).
+
+
+---
+
+### Dosyaların Görevleri
+
+#### `main.c`
+Programın giriş noktasıdır.  
+Görev listesi (`giris.txt`) okunur, zamanlayıcı başlatılır ve FreeRTOS çekirdeği çalıştırılır. Zamanlama algoritması bu dosyada yer almaz; yalnızca simülasyonun başlatılmasından sorumludur.
+
+---
+
+#### `scheduler.c`
+Projenin çekirdek bileşenidir. Görevlerin:
+- Kuyruklara alınması  
+- Önceliklerine göre çalıştırılması  
+- Askıya alınması  
+- Sonlandırılması  
+
+işlemleri bu dosyada gerçekleştirilir. Zamanlayıcı, her saniyede bir çağrılarak görevlerin durumlarını günceller.
+
+---
+
+#### `scheduler.h`
+Zamanlayıcıya ait veri yapıları, görev durumları ve fonksiyon prototipleri bu dosyada tanımlanmıştır. Modüler ve okunabilir bir yapı sağlamak amacıyla kullanılmıştır.
+
+---
+
+#### `tasks1.c`
+Bu dosyada tüm görevler için ortak kullanılan görev fonksiyonu tanımlanmıştır. Görevler; başlama, çalışma, askıya alınma ve sonlanma durumlarında terminal ekranına bilgilendirici mesajlar üretir. Bu sayede zamanlayıcının davranışı gözlemlenebilir hale gelmiştir.
+
+---
+
+## Görev (Task) Yapısı
+
+Her görev aşağıdaki temel bilgilerle temsil edilir:
+- Görev kimliği (ID)
+- Varış zamanı
+- Öncelik seviyesi (0–3)
+- Toplam işlem süresi
+- Kalan işlem süresi
+- Görev durumu (READY, RUNNING, FINISHED)
+
+Görevler simülasyon boyunca dinamik olarak yönetilmektedir.
+
+---
+
 ## Zamanlayıcı (Scheduler) Tasarımı
 
 Bu projede, FreeRTOS'un görev zamanlama mantığını göstermek amacıyla
