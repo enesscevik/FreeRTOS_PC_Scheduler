@@ -5,7 +5,7 @@
 #include "task.h"
 
 /*
- * Renkli loglama icin renk yapisi.
+ * Color structure for colored logging.
  */
 typedef struct {
     int red;
@@ -14,74 +14,74 @@ typedef struct {
 } Color;
 
 /*
- * Gorev Durumlari:
- * TASK_READY:    Gorev kuyrukta sirasini bekliyor (FreeRTOS: Suspended).
- * TASK_RUNNING:  Gorev su an islemci uzerinde (FreeRTOS: Running).
- * TASK_FINISHED: Gorev bitti veya zaman asimina ugradi (FreeRTOS: Deleted).
+ * Task Statuses:
+ * TASK_READY:    Task is waiting in queue (FreeRTOS: Suspended).
+ * TASK_RUNNING:  Task is currently on the processor (FreeRTOS: Running).
+ * TASK_FINISHED: Task finished or timed out (FreeRTOS: Deleted).
  */
 typedef enum { TASK_READY, TASK_RUNNING, TASK_FINISHED } TaskStatus;
 
 /*
- * Gorev Parametreleri
- * dosyadan okunan ve calisma zamaninda guncellenen veriler.
+ * Task Parameters
+ * Data read from file and updated at runtime.
  */
 typedef struct TaskParams {
-    int id;             // Gorev Kimligi (0, 1, 2...)
-    int arrival_time;   // Varis Zamani (saniye)
-    int priority;       // Öncelik (0: Real-Time, 1-2-3: User Tasks)
-    int cpu_time;       // Toplam Gereken CPU Suresi
-    int remaining_time; // Kalan CPU Suresi
-    int last_status_change; // Durum degisikligi zamani
+    int id;             // Task ID (0, 1, 2...)
+    int arrival_time;   // Arrival Time (seconds)
+    int priority;       // Priority (0: Real-Time, 1-2-3: User Tasks)
+    int cpu_time;       // Total Required CPU Time
+    int remaining_time; // Remaining CPU Time
+    int last_status_change; // Status change time
 
-    TaskStatus status; // Gorevin Simülasyon Durumu
-    Color color;       // Log ciktisi icin atanan rastgele renk
+    TaskStatus status; // Task Simulation Status
+    Color color;       // Random color assigned for log output
 
-    // Kuyruk yönetimi icin cift yonlu bagli liste pointerlari
+    // Doubly linked list pointers for queue management
     struct TaskParams* next;
     struct TaskParams* prev;
 
-    // FreeRTOS tarafindaki gercek gorev yoneticisi
+    // Real task manager on FreeRTOS side
     TaskHandle_t handle;
 } TaskParams;
 
 /*
  * Generic Task
- * Tüm simule edilen gorevler bu fonksiyonu calistirir.
- * Surekli CPU tuketimini simule eden bir donguye sahiptir.
+ * All simulated tasks run this function.
+ * It has a loop that simulates continuous CPU consumption.
  */
 void generic_task(void* pvParameters);
 
 /*
- * Gorev Kuyrugu
- * FIFO mantigiyla calisan cift yonlu bagli liste.
+ * Task Queue
+ * Doubly linked list working with FIFO logic.
  */
 typedef struct {
-    TaskParams* head; // Listenin başı
-    TaskParams* tail; // Listenin sonu
-    int count;        // Eleman sayisi
+    TaskParams* head; // Head of list
+    TaskParams* tail; // Tail of list
+    int count;        // Number of elements
 } TaskQueue;
 
-// Belirtilen dosyadan gorevleri okur, dinamik bellek ayirir ve listeyi dondurur.
-// Hata durumunda NULL döner, task_count'u 0 yapar.
+// Reads tasks from the specified file, allocates dynamic memory, and returns the list.
+// Returns NULL on error, sets task_count to 0.
 TaskParams* parse_tasks_from_file(const char* f_name, int* task_count);
 
-// Scheduler icin gerekli globalleri ayarlar.
+// Sets necessary globals for the Scheduler.
 void init_scheduler(TaskParams tasks[], int task_count);
 
-// Ana Simülasyon Gorevi
-// FreeRTOS icinde calisir, diger gorevleri yonetir.
+// Main Simulation Task
+// Runs inside FreeRTOS, manages other tasks.
 void simulation_task(void* pvParameters);
 
-// Her simülasyon saniyesinde cagrilan planlayici mantigi.
+// Scheduler logic called every simulation second.
 void schedule_tick(void);
 
-// Kuyrugun sonuna gorev ekler.
+// Adds task to the end of the queue.
 void enqueue(TaskQueue* queue, TaskParams* task);
 
-// Kuyruktan siradaki gorevi cikarir ve dondurur.
+// Dequeues the next task from the queue and returns it.
 TaskParams* dequeue(TaskQueue* queue);
 
-// Loglama Yardimcilari
+// Logging Helpers
 void logger_w_chars(const char* message);
 
 #endif // SCHEDULER_H

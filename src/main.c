@@ -3,18 +3,18 @@
 #include <stdlib.h>
 
 /*
- * Scheduler'i baslatir ve FreeRTOS cekirdegini devreye sokar.
+ * Starts the scheduler and initializes the FreeRTOS kernel. 
  */
 int main(int argc, char** argv) {
-    // argumanlari al
+    // get arguments
     if (argc != 2) {
         fprintf(stderr, "missing argument!\nplease use: ./freertos_sim <FILE_NAME>\n");
         return 1;
     }
 
-    int count = 0; // dosyadan okunan gorev sayisi
-    // parse_tasks_from_file fonksiyonu, gorevleri okur, TaskParams listesini olusturur
-    // ve her TaskParams icin FreeRTOS worker task'lerini yaratip askiya alir
+    int count = 0; // number of tasks read from file
+    // parse_tasks_from_file reads tasks, creates TaskParams list, and creates/suspends
+    // FreeRTOS worker tasks for each.
     TaskParams* list = parse_tasks_from_file(argv[1], &count);
 
     if (list == NULL || count == 0) {
@@ -22,19 +22,19 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    // scheduler icin gerekli olan on hazirligi yapar
+    // Performs preliminary preparation for the scheduler.
     init_scheduler(list, count);
 
-    // Bu gorev, FreeRTOS cekirdegi icinde calisacak ve tum planlama mantigini yonetecek
-    xTaskCreate(simulation_task,          // fonksiyon
-                "Simulation",             // gorev adı
-                configMINIMAL_STACK_SIZE, // yigin boyutu (FreeRTOSConfig.h'den gelir)
-                NULL,                     // parametreler
-                tskIDLE_PRIORITY + 2,     // oncelik
+    // This task will run within the FreeRTOS kernel and manage all scheduling logic.
+    xTaskCreate(simulation_task,          // function
+                "Simulation",             // task name
+                configMINIMAL_STACK_SIZE, // stack size (from FreeRTOSConfig.h)
+                NULL,                     // parameters
+                tskIDLE_PRIORITY + 2,     // priority
                 NULL                      // task handler
     );
 
-    // FreeRTOS Scheduler'ı başlatma
+    // Start FreeRTOS scheduler
     vTaskStartScheduler();
 
     if (list != NULL) {

@@ -1,44 +1,43 @@
-# FreeRTOS PC Görev Zamanlayıcı Simülasyonu
+# FreeRTOS PC Scheduler Simulation
 
-Bu proje, FreeRTOS gerçek zamanlı işletim sistemi çekirdeğinin bir PC (Linux) ortamında simülasyonunu sunmaktadır. Geliştiricilerin FreeRTOS tabanlı uygulamaları gömülü donanıma yüklemeden önce PC üzerinde geliştirip test etmelerini sağlamak amacıyla oluşturulmuştur.
+This project simulates the FreeRTOS real-time operating system kernel in a PC (Linux/POSIX) environment. It demonstrates a custom scheduling algorithm without requiring embedded hardware.
 
-## Proje İçeriği
+## Overview
 
-Proje, temel FreeRTOS kaynak dosyalarını ve PC üzerinde çalışabilmesi için gerekli taşınabilir (portable) katmanı içermektedir. `src` dizini altında ise, örnek görevlerin ve zamanlayıcı konfigürasyonunun bulunduğu uygulama kodları yer almaktadır.
+The simulation implements a **4-level priority-based scheduler**:
 
-- `FreeRTOS/`: FreeRTOS kaynak kodları ve başlık dosyaları.
-- `FreeRTOS/portable/ThirdParty/GCC/Posix/`: FreeRTOS'un Linux (POSIX) ortamında çalışmasını sağlayan taşınabilir katman.
-- `src/`: Uygulama özelindeki kaynak kodları (`main.c`, `scheduler.c`, `tasks1.c`, `FreeRTOSConfig.h`, `heap_3.c`).
+*   **Priority 0 (Real-Time):** FCFS (First-Come First-Served). Runs to completion without interruption.
+*   **Priority 1-3 (User Tasks):** MLFQ (Multi-Level Feedback Queue). Tasks have a 1-second time quantum. If a task exceeds its quantum, its priority drops, and it moves to a lower priority queue.
+*   **Timeout:** Any task pending in the system for more than 20 seconds is automatically terminated.
 
-## Kurulum ve Çalıştırma
+## Build & Run
 
-Projenin derlenebilmesi için aşağıdakilerin yüklü olması gerekir.
+### Prerequisites
+*   GCC
+*   Make
 
-- gcc
-- make
-
-### Derleme
-
-Projenin derlenmesi için ana dizinde aşağıdaki komutu çalıştırın:
+### Compilation
+Build the project using `make`:
 
 ```bash
 make
 ```
 
-Bu komut, tüm kaynak kodları derleyecek ve `freertos_sim` adında çalıştırılabilir bir dosya oluşturacaktır.
-
-### Çalıştırma
-
-Derleme başarılı olduktan sonra, uygulamayı aşağıdaki komutla çalıştırabilirsiniz ("giris.txt" dosyasi yerine kendi dosyanizla da calistirabilirsiniz.):
+### Usage
+Run the simulation by providing a task list file (e.g., `tasks.txt`):
 
 ```bash
-./freertos_sim giris.txt
+./freertos_sim tasks.txt
 ```
 
-### Temizleme
+**Input File Format (`tasks.txt`):**
+Each line represents a task: `Arrival Time, Priority, CPU Time`
+```
+0, 1, 5
+2, 0, 3
+```
 
-Derleme sırasında oluşturulan tüm nesne dosyalarını ve çalıştırılabilir dosyayı silmek için aşağıdaki komutu kullanabilirsiniz:
-
+### Clean
 ```bash
 make clean
 ```
